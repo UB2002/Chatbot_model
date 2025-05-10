@@ -6,23 +6,14 @@ from rag import Rag
 import google.generativeai as genai
 
 class GeminiRAGChatbot:
-    def __init__(self, faiss_index_path="faiss_index"):
-        # Load API key from environment variables
+    def __init__(self, faiss_index_path="faiss_index", document_path: str = None):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable not set")
         
-        # Configure Gemini API
         genai.configure(api_key=api_key)
-        
-        # Initialize Gemini 1.5 Flash model
-        print("Initializing Gemini 1.5 Flash model...")
         self.model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Initialize RAG component
-        self.rag = Rag(faiss_index_path=faiss_index_path)
-        
-        # Initialize conversation history
+        self.rag = Rag(faiss_index_path=faiss_index_path, document_path=document_path)
         self.history = []
     
     def format_docs(self, docs):
@@ -42,21 +33,12 @@ Question: {query}
 
 Answer:"""
             
-            print("Sending prompt to Gemini Flash...")
-            
-            # Generate response using the content generation API
             response = self.model.generate_content(prompt)
             
-            # Extract text content from response
             if hasattr(response, 'text'):
                 answer = response.text
             else:
-                # Alternative way to access response text
                 answer = response.parts[0].text if hasattr(response, 'parts') else str(response)
-            
-            print(f"Received response from Gemini Flash (length: {len(answer)} chars)")
-            
-            # Update history with actual user query and answer
             self.history.append({"role": "user", "parts": [query]})
             self.history.append({"role": "model", "parts": [answer]})
             
@@ -79,8 +61,6 @@ Answer:"""
                             for doc, score in retrieved_docs]
             }
         except Exception as e:
-            print(f"Error in chat method: {str(e)}")
-            # Make sure to include the 'answer' key even in error cases
             return {
                 "answer": f"An error occurred: {str(e)}",
                 "error": str(e)
@@ -91,13 +71,11 @@ Answer:"""
 
 if __name__ == "__main__":
     try:
-        print("Initializing GeminiRAGChatbot...")
         chatbot = GeminiRAGChatbot()
         
         query = "What is your product?"
         print(f"Sending query: {query}")
         
-        print("Retrieving and generating response...")
         response = chatbot.chat(query)
         
         print(f"\nQuestion: {query}\n")

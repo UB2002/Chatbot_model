@@ -64,7 +64,7 @@ st.markdown("""
 @st.cache_resource
 def load_chatbot():
     with st.spinner("Initializing Gemini 1.5 Flash model..."):
-        return GeminiRAGChatbot()
+        return GeminiRAGChatbot(faiss_index_path="faiss_index", document_path="dataset/FAQ.markdown")
 
 # Title and description
 st.markdown("<h1 class='main-header'>🔍 Gemini RAG Chatbot</h1>", unsafe_allow_html=True)

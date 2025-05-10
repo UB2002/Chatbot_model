@@ -7,7 +7,7 @@ from typing import List, Tuple
 import google.generativeai as genai
 from langchain_core.embeddings import Embeddings
 
-# Custom Gemini Embedding Class for LangChain
+
 class GeminiEmbeddings(Embeddings):
     def __init__(self, model_name: str = "models/text-embedding-004", api_key: str = None):
         if not api_key:
@@ -32,11 +32,11 @@ class GeminiEmbeddings(Embeddings):
             raise ValueError(f"Error embedding query with Gemini: {str(e)}")
 
 class Rag:
-    def __init__(self, faiss_index_path: str = "faiss_index", embedding_model_name: str = "models/text-embedding-004"):
+    def __init__(self, faiss_index_path: str = "/app/faiss_index", embedding_model_name: str = "models/text-embedding-004", document_path: str = None):
         self.faiss_index_path = faiss_index_path
         self.embedding_model = GeminiEmbeddings(model_name=embedding_model_name)
+        self.vector_store = None
         
-        # Check if FAISS index exists and is compatible
         if os.path.exists(self.faiss_index_path):
             try:
                 self.vector_store = FAISS.load_local(
@@ -44,11 +44,22 @@ class Rag:
                     self.embedding_model,
                     allow_dangerous_deserialization=True
                 )
+                print(f"Loaded existing FAISS index from {self.faiss_index_path}")
             except Exception as e:
-                print(f"Error loading FAISS index: {e}. Recreating index...")
+                print(f"Error loading FAISS index: {e}. Will recreate index...")
                 self.vector_store = None
-        else:
-            self.vector_store = None
+        
+        if self.vector_store is None and document_path:
+            try:
+                if not os.path.exists(document_path):
+                    raise FileNotFoundError(f"Document file not found: {document_path}")
+                documents = self.load_file(document_path)
+                chunks = self.chunks(documents)
+                self.store_in_faiss(chunks, force_recreate=True)
+                print(f"Created new FAISS index from {document_path}")
+            except Exception as e:
+                print(f"Error initializing FAISS index from {document_path}: {e}")
+                self.vector_store = None
 
     def load_file(self, path: str) -> List[Document]:
         file = TextLoader(path)
