@@ -1,23 +1,52 @@
 from langchain_community.document_loaders import TextLoader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 import os
 from typing import List, Tuple
-import torch
+import google.generativeai as genai
+from langchain_core.embeddings import Embeddings
+
+# Custom Gemini Embedding Class for LangChain
+class GeminiEmbeddings(Embeddings):
+    def __init__(self, model_name: str = "models/text-embedding-004", api_key: str = None):
+        if not api_key:
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY environment variable not set")
+        genai.configure(api_key=api_key)
+        self.model_name = model_name
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        try:
+            result = [genai.embed_content(model=self.model_name, content=text, task_type="RETRIEVAL_DOCUMENT")["embedding"] for text in texts]
+            return result
+        except Exception as e:
+            raise ValueError(f"Error embedding documents with Gemini: {str(e)}")
+
+    def embed_query(self, text: str) -> List[float]:
+        try:
+            result = genai.embed_content(model=self.model_name, content=text, task_type="RETRIEVAL_QUERY")["embedding"]
+            return result
+        except Exception as e:
+            raise ValueError(f"Error embedding query with Gemini: {str(e)}")
 
 class Rag:
-    def __init__(self, faiss_index_path: str = "faiss_index"):
+    def __init__(self, faiss_index_path: str = "faiss_index", embedding_model_name: str = "models/text-embedding-004"):
         self.faiss_index_path = faiss_index_path
-        self.embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        self.embedding_model = GeminiEmbeddings(model_name=embedding_model_name)
         
+        # Check if FAISS index exists and is compatible
         if os.path.exists(self.faiss_index_path):
-            self.vector_store = FAISS.load_local(
-                self.faiss_index_path,
-                self.embedding_model,
-                allow_dangerous_deserialization=True
-            )
+            try:
+                self.vector_store = FAISS.load_local(
+                    self.faiss_index_path,
+                    self.embedding_model,
+                    allow_dangerous_deserialization=True
+                )
+            except Exception as e:
+                print(f"Error loading FAISS index: {e}. Recreating index...")
+                self.vector_store = None
         else:
             self.vector_store = None
 
@@ -47,11 +76,16 @@ class Rag:
             raise ValueError("No documents provided for FAISS storage")
         
         if os.path.exists(self.faiss_index_path) and not force_recreate:
-            self.vector_store = FAISS.load_local(
-                self.faiss_index_path,
-                self.embedding_model,
-                allow_dangerous_deserialization=True
-            )
+            try:
+                self.vector_store = FAISS.load_local(
+                    self.faiss_index_path,
+                    self.embedding_model,
+                    allow_dangerous_deserialization=True
+                )
+            except Exception as e:
+                print(f"Error loading FAISS index: {e}. Recreating index...")
+                self.vector_store = FAISS.from_documents(documents, self.embedding_model)
+                self.vector_store.save_local(self.faiss_index_path)
         else:
             self.vector_store = FAISS.from_documents(documents, self.embedding_model)
             self.vector_store.save_local(self.faiss_index_path)
@@ -59,7 +93,6 @@ class Rag:
         return self.vector_store
     
     def retriever(self, query: str) -> List[Tuple[Document, float]]:
-
         if not query or not isinstance(query, str):
             raise ValueError("Query must be a non-empty string")
         
@@ -69,13 +102,19 @@ class Rag:
         return self.vector_store.similarity_search_with_relevance_scores(query=query, k=3)
 
 if __name__ == "__main__":
-    rag = Rag(faiss_index_path="faiss_index")
-    
-    query = "What is your product?"
-    results = rag.retriever(query)
-    print(len(results))
-    # for i, (result, score) in enumerate(results):
-    #     print(f"Result {i+1} (score: {score:.4f}): {result.page_content[:100]}... (Source: {result.metadata['source']})")
-
-    context_tex = "\n\n######################################\n\n".join([doc.page_content for doc, _socre in results])
-    print(context_tex)
+    try:
+        rag = Rag(faiss_index_path="faiss_index")
+        
+        # Example: Load and store documents
+        documents = rag.load_file("dataset/FAQ.markdown")  # Replace with actual file path
+        chunks = rag.chunks(documents)
+        rag.store_in_faiss(chunks, force_recreate=True)  # Force recreate for new embeddings
+        
+        query = "What is your product?"
+        results = rag.retriever(query)
+        print(f"Retrieved {len(results)} results")
+        
+        context_text = "\n\n######################################\n\n".join([doc.page_content for doc, _score in results])
+        print(context_text)
+    except Exception as e:
+        print(f"Error: {str(e)}")
