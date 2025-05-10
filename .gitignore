@@ -1,0 +1,9 @@
+Qwen1.7B_modelQwen
+Qwen1.7B_tokenizer
+faiss_index
+hf_models
+venv
+__pycache__
+.env
+model 
+tokenizer
