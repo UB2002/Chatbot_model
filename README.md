@@ -1,4 +1,4 @@
-# Gemini RAG-Powered Multi-Agent Q&A Chatbot
+# Gemini RAG Q&A Chatbot
 
 This project implements a Retrieval-Augmented Generation (RAG) powered chatbot using Google's Gemini 1.5 Flash model, integrated with a FAISS vector store for efficient document retrieval and a Streamlit-based web interface for user interaction. The system is designed to answer queries based on a small document collection, with an agentic workflow to handle different types of queries.
 
